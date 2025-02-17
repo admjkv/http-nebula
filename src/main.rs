@@ -1,5 +1,6 @@
 use std::io::prelude::*;
 use std::net::{TcpListener, TcpStream};
+use std::thread;
 
 fn main() -> std::io::Result<()> {
     // bind the tcp listener to localhost on port 7878
@@ -10,12 +11,12 @@ fn main() -> std::io::Result<()> {
     for stream in listener.incoming() {
         match stream {
             Ok(stream) => {
-                // handle each connection
-                handle_connection(stream);
+                // Spawn a new thread for each connection
+                thread::spawn(|| {
+                    handle_connection(stream);
+                });
             }
-            Err(e) => {
-                eprintln!("Connection failed: {}", e);
-            }
+            Err(e) => eprintln!("Connection failed: {}", e),
         }
     }
     Ok(())

@@ -22,21 +22,32 @@ fn main() -> std::io::Result<()> {
 }
 
 fn handle_connection(mut stream: TcpStream) {
-    // read request into buffer
     let mut buffer = [0; 1024];
-    match stream.read(&mut buffer) {
-        Ok(_) => {
-            // log the request
-            println!("Request: {}", String::from_utf8_lossy(&buffer[..]));
+    if let Ok(_) = stream.read(&mut buffer) {
+        // convert the request bytes to a string
+        let request = String::from_utf8_lossy(&buffer[..]);
+        println!("Request: {}", request);
 
-            // create a simple http response
-            let response = "HTTP/1.1 200 OK\r\nContent-Lenght: 13\r\n\r\nHello, World!";
-            if let Err(e) = stream.write_all(response.as_bytes()) {
-                eprintln!("Failed to write to stream: {}", e);
-            }
+        // check the request line
+        let (status_line, content) = if request.starts_with("GET /hello ") {
+            ("HTTP/1.1 200 OK", "Hello, Rustacean!")
+        } else if request.starts_with("GET / ") {
+            ("HTTP/1.1 200 OK", "Welcome to the homepage!")
+        } else {
+            ("HTTP/1.1 404 NOT FOUND", "Page not found")
+        };
+
+        let response = format!(
+            "{}\r\nContent-Length: {}\r\n\r\n{}",
+            status_line,
+            content.len(),
+            content
+        );
+
+        if let Err(e) = stream.write_all(response.as_bytes()) {
+            eprintln!("Failed to write to stream: {}", e);
         }
-        Err(e) => {
-            eprintln!("Failed to read from stream: {}", e);
-        }
+    } else {
+        eprintln!("Failed to read from stream");
     }
 }

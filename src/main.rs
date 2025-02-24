@@ -1,6 +1,8 @@
 use std::io::prelude::*;
 use std::net::{TcpListener, TcpStream};
 use std::thread;
+use std::fs;
+use std::path::Path;
 
 fn main() -> std::io::Result<()> {
     // bind the tcp listener to localhost on port 7878
@@ -29,13 +31,28 @@ fn handle_connection(mut stream: TcpStream) {
         let request = String::from_utf8_lossy(&buffer[..]);
         println!("Request: {}", request);
 
-        // check the request line
-        let (status_line, content) = if request.starts_with("GET /hello ") {
-            ("HTTP/1.1 200 OK", "Hello, Rustacean!")
-        } else if request.starts_with("GET / ") {
-            ("HTTP/1.1 200 OK", "Welcome to the homepage!")
+        // extract the path from the request
+        let path = request.lines().next().and_then(
+            |line| line.split_whitespace().nth(1)
+        ).unwrap_or("/");
+
+        // remove the leading slash and map to index.html if empty
+        let file_path = if path == "/" {
+            "public/index.html"
         } else {
-            ("HTTP/1.1 404 NOT FOUND", "Page not found")
+            &path[1..]
+        };
+
+        // check if file exists and try to read it
+        let (status_line, content) = if Path::new(file_path).exists() {
+            match fs::read_to_string(file_path) {
+                Ok(contents) => ("HTTP/1.1 200 OK", contents),
+                Err(_) => ("HTTP/1.1 500 INTERNAL SERVER ERROR", "Error reading file".to_string())
+            }
+        } else if path == "/hello" {
+            ("HTTP/1.1 200 OK", "Hello, Rustacean!".to_string())
+        } else {
+            ("HTTP/1.1 404 NOT FOUND", "Page not found".to_string())
         };
 
         let response = format!(

@@ -1,5 +1,9 @@
 [package]
 name = "http-nebula"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2021"
 license = "MIT"
+
+[dependencies]
+toml = "0.8.6"
+serde = { version = "1.0.189", features = ["derive"] }

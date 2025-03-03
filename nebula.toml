@@ -1,0 +1,7 @@
+[server]
+address = "127.0.0.1"
+port = 8989
+
+[content]
+public_dir = "public"
+default_file = "index.html"

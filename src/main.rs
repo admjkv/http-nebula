@@ -55,9 +55,11 @@ fn handle_connection(mut stream: TcpStream) {
             ("HTTP/1.1 404 NOT FOUND", "Page not found".to_string())
         };
 
+        let content_type = get_content_type(file_path);
         let response = format!(
-            "{}\r\nContent-Length: {}\r\n\r\n{}",
+            "{}\r\nContent-Type: {}\r\nContent-Length: {}\r\n\r\n{}",
             status_line,
+            content_type,
             content.len(),
             content
         );
@@ -67,5 +69,21 @@ fn handle_connection(mut stream: TcpStream) {
         }
     } else {
         eprintln!("Failed to read from stream");
+    }
+}
+
+fn get_content_type(path: &str) -> &str {
+    let extension = Path::new(path).extension()
+        .and_then(|ext| ext.to_str())
+        .unwrap_or("");
+    
+    match extension {
+        "html" => "text/html",
+        "css" => "text/css",
+        "js" => "application/javascript",
+        "png" => "image/png",
+        "jpg" | "jpeg" => "image/jpeg",
+        "gif" => "image/gif",
+        _ => "text/plain",
     }
 }

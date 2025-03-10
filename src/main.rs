@@ -110,35 +110,40 @@ fn handle_connection(mut stream: TcpStream, config: &NebulaConfig) -> Result<(),
         format!("{}/{}", config.content.public_dir, sanitize_path(&path))
     };
 
-    // check if file exists and serve it
-    let (status_line, content, is_binary) = if Path::new(&file_path).exists() {
-        let content_type = get_content_type(&file_path);
-        let is_binary =
-            !content_type.starts_with("text/") && content_type != "application/javascript";
+    // Inside handle_connection after parsing the request
+    let (status_line, content, is_binary) = if method == "GET" {
+        if Path::new(&file_path).exists() {
+            let content_type = get_content_type(&file_path);
+            let is_binary =
+                !content_type.starts_with("text/") && content_type != "application/javascript";
 
-        if is_binary {
-            match fs::read(&file_path) {
-                Ok(contents) => ("HTTP/1.1 200 OK", contents, true),
-                Err(_) => (
-                    "HTTP/1.1 500 INTERNAL SERVER ERROR",
-                    Vec::from("Error reading file"),
-                    false,
-                ),
+            if is_binary {
+                match fs::read(&file_path) {
+                    Ok(contents) => ("HTTP/1.1 200 OK", contents, true),
+                    Err(_) => (
+                        "HTTP/1.1 500 INTERNAL SERVER ERROR",
+                        Vec::from("Error reading file"),
+                        false,
+                    ),
+                }
+            } else {
+                match fs::read_to_string(&file_path) {
+                    Ok(contents) => ("HTTP/1.1 200 OK", contents.into_bytes(), false),
+                    Err(_) => (
+                        "HTTP/1.1 500 INTERNAL SERVER ERROR",
+                        Vec::from("Error reading file"),
+                        false,
+                    ),
+                }
             }
+        } else if path == "/hello" {
+            ("HTTP/1.1 200 OK", Vec::from("Hello, Rustacean!"), false)
         } else {
-            match fs::read_to_string(&file_path) {
-                Ok(contents) => ("HTTP/1.1 200 OK", contents.into_bytes(), false),
-                Err(_) => (
-                    "HTTP/1.1 500 INTERNAL SERVER ERROR",
-                    Vec::from("Error reading file"),
-                    false,
-                ),
-            }
+            ("HTTP/1.1 404 NOT FOUND", Vec::from("Page not found"), false)
         }
-    } else if path == "/hello" {
-        ("HTTP/1.1 200 OK", Vec::from("Hello, Rustacean!"), false)
     } else {
-        ("HTTP/1.1 404 NOT FOUND", Vec::from("Page not found"), false)
+        // Handle non-GET methods
+        ("HTTP/1.1 405 METHOD NOT ALLOWED", Vec::from("Method not allowed"), false)
     };
 
     let content_type = get_content_type(&file_path);

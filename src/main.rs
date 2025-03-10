@@ -102,29 +102,43 @@ fn handle_connection(mut stream: TcpStream, config: &NebulaConfig) {
             format!("{}{}", config.content.public_dir, path)
         };
 
-        // check if file exists and try to read it
-        let (status_line, content) = if Path::new(&file_path).exists() {
-            match fs::read_to_string(&file_path) {
-                Ok(contents) => ("HTTP/1.1 200 OK", contents),
-                Err(_) => ("HTTP/1.1 500 INTERNAL SERVER ERROR", "Error reading file".to_string())
+        // check if file exists and serve it
+        let (status_line, content, is_binary) = if Path::new(&file_path).exists() {
+            let content_type = get_content_type(&file_path);
+            let is_binary = !content_type.starts_with("text/") && content_type != "application/javascript";
+            
+            if is_binary {
+                match fs::read(&file_path) {
+                    Ok(contents) => ("HTTP/1.1 200 OK", contents, true),
+                    Err(_) => ("HTTP/1.1 500 INTERNAL SERVER ERROR", Vec::from("Error reading file"), false)
+                }
+            } else {
+                match fs::read_to_string(&file_path) {
+                    Ok(contents) => ("HTTP/1.1 200 OK", contents.into_bytes(), false),
+                    Err(_) => ("HTTP/1.1 500 INTERNAL SERVER ERROR", Vec::from("Error reading file"), false)
+                }
             }
         } else if path == "/hello" {
-            ("HTTP/1.1 200 OK", "Hello, Rustacean!".to_string())
+            ("HTTP/1.1 200 OK", Vec::from("Hello, Rustacean!"), false)
         } else {
-            ("HTTP/1.1 404 NOT FOUND", "Page not found".to_string())
+            ("HTTP/1.1 404 NOT FOUND", Vec::from("Page not found"), false)
         };
 
         let content_type = get_content_type(&file_path);
         let response = format!(
-            "{}\r\nContent-Type: {}\r\nContent-Length: {}\r\n\r\n{}",
+            "{}\r\nContent-Type: {}\r\nContent-Length: {}\r\n\r\n",
             status_line,
             content_type,
             content.len(),
-            content
         );
 
         if let Err(e) = stream.write_all(response.as_bytes()) {
-            eprintln!("Failed to write to stream: {}", e);
+            eprintln!("Failed to write response headers: {}", e);
+            return;
+        }
+        
+        if let Err(e) = stream.write_all(&content) {
+            eprintln!("Failed to write response body: {}", e);
         }
     } else {
         eprintln!("Failed to read from stream");

@@ -72,7 +72,9 @@ fn main() -> std::io::Result<()> {
 
                 // Spawn a new thread for each connection
                 thread::spawn(move || {
-                    handle_connection(stream, &thread_config);
+                    if let Err(e) = handle_connection(stream, &thread_config) {
+                        eprintln!("Error handling connection: {}", e);
+                    }
                 });
             }
             Err(e) => eprintln!("Connection failed: {}", e),
@@ -81,79 +83,88 @@ fn main() -> std::io::Result<()> {
     Ok(())
 }
 
-fn handle_connection(mut stream: TcpStream, config: &NebulaConfig) {
+fn handle_connection(mut stream: TcpStream, config: &NebulaConfig) -> Result<(), std::io::Error> {
+    stream.set_read_timeout(Some(std::time::Duration::from_secs(30)))?;
+    stream.set_write_timeout(Some(std::time::Duration::from_secs(30)))?;
+
     let mut buffer = [0; 1024];
-    if let Ok(_) = stream.read(&mut buffer) {
-        // convert the request bytes to a string
-        let request = String::from_utf8_lossy(&buffer[..]);
-        println!("Request: {}", request);
+    stream.read(&mut buffer)?;
 
-        // extract the path from the request
-        let path = request
-            .lines()
-            .next()
-            .and_then(|line| line.split_whitespace().nth(1))
-            .unwrap_or("/");
+    // convert the request bytes to a string
+    let request = String::from_utf8_lossy(&buffer[..]);
+    println!("Request: {}", request);
 
-        // remove the leading slash and map to default file if empty
-        let file_path = if path == "/" {
-            format!(
-                "{}/{}",
-                config.content.public_dir, config.content.default_file
-            )
-        } else {
-            format!("{}/{}", config.content.public_dir, sanitize_path(&path))
-        };
+    // extract the path from the request
+    let path = request
+        .lines()
+        .next()
+        .and_then(|line| line.split_whitespace().nth(1))
+        .unwrap_or("/");
 
-        // check if file exists and serve it
-        let (status_line, content, is_binary) = if Path::new(&file_path).exists() {
-            let content_type = get_content_type(&file_path);
-            let is_binary =
-                !content_type.starts_with("text/") && content_type != "application/javascript";
-
-            if is_binary {
-                match fs::read(&file_path) {
-                    Ok(contents) => ("HTTP/1.1 200 OK", contents, true),
-                    Err(_) => (
-                        "HTTP/1.1 500 INTERNAL SERVER ERROR",
-                        Vec::from("Error reading file"),
-                        false,
-                    ),
-                }
-            } else {
-                match fs::read_to_string(&file_path) {
-                    Ok(contents) => ("HTTP/1.1 200 OK", contents.into_bytes(), false),
-                    Err(_) => (
-                        "HTTP/1.1 500 INTERNAL SERVER ERROR",
-                        Vec::from("Error reading file"),
-                        false,
-                    ),
-                }
-            }
-        } else if path == "/hello" {
-            ("HTTP/1.1 200 OK", Vec::from("Hello, Rustacean!"), false)
-        } else {
-            ("HTTP/1.1 404 NOT FOUND", Vec::from("Page not found"), false)
-        };
-
-        let content_type = get_content_type(&file_path);
-        let response = format!(
-            "{}\r\nContent-Type: {}\r\nContent-Length: {}\r\n\r\n",
-            status_line,
-            content_type,
-            content.len(),
-        );
-
-        if let Err(e) = stream.write_all(response.as_bytes()) {
-            eprintln!("Failed to write response headers: {}", e);
-            return;
-        }
-
-        if let Err(e) = stream.write_all(&content) {
-            eprintln!("Failed to write response body: {}", e);
-        }
+    // remove the leading slash and map to default file if empty
+    let file_path = if path == "/" {
+        format!(
+            "{}/{}",
+            config.content.public_dir, config.content.default_file
+        )
     } else {
-        eprintln!("Failed to read from stream");
+        format!("{}/{}", config.content.public_dir, sanitize_path(&path))
+    };
+
+    // check if file exists and serve it
+    let (status_line, content, is_binary) = if Path::new(&file_path).exists() {
+        let content_type = get_content_type(&file_path);
+        let is_binary =
+            !content_type.starts_with("text/") && content_type != "application/javascript";
+
+        if is_binary {
+            match fs::read(&file_path) {
+                Ok(contents) => ("HTTP/1.1 200 OK", contents, true),
+                Err(_) => (
+                    "HTTP/1.1 500 INTERNAL SERVER ERROR",
+                    Vec::from("Error reading file"),
+                    false,
+                ),
+            }
+        } else {
+            match fs::read_to_string(&file_path) {
+                Ok(contents) => ("HTTP/1.1 200 OK", contents.into_bytes(), false),
+                Err(_) => (
+                    "HTTP/1.1 500 INTERNAL SERVER ERROR",
+                    Vec::from("Error reading file"),
+                    false,
+                ),
+            }
+        }
+    } else if path == "/hello" {
+        ("HTTP/1.1 200 OK", Vec::from("Hello, Rustacean!"), false)
+    } else {
+        ("HTTP/1.1 404 NOT FOUND", Vec::from("Page not found"), false)
+    };
+
+    let content_type = get_content_type(&file_path);
+    let response = format!(
+        "{}\r\nContent-Type: {}\r\nContent-Length: {}\r\n\r\n",
+        status_line,
+        content_type,
+        content.len(),
+    );
+
+    stream.write_all(response.as_bytes())?;
+    stream.write_all(&content)?;
+
+    Ok(())
+}
+
+fn parse_http_request(buffer: &[u8]) -> Option<(&str, &str)> {
+    let request = std::str::from_utf8(buffer).ok()?;
+    let request_line = request.lines().next()?;
+    let parts: Vec<&str> = request_line.split_whitespace().collect();
+    
+    if parts.len() >= 2 {
+        Some((parts[0], parts[1])) // (method, path)
+    } else {
+        None
     }
 }
 

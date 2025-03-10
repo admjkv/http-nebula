@@ -111,7 +111,7 @@ fn handle_connection(mut stream: TcpStream, config: &NebulaConfig) -> Result<(),
     };
 
     // Inside handle_connection after parsing the request
-    let (status_line, content, is_binary) = if method == "GET" {
+    let (status_line, content, _) = if method == "GET" {
         if Path::new(&file_path).exists() {
             let content_type = get_content_type(&file_path);
             let is_binary =

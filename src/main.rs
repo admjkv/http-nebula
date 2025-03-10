@@ -1,9 +1,9 @@
+use serde::Deserialize;
+use std::fs;
 use std::io::prelude::*;
 use std::net::{TcpListener, TcpStream};
-use std::thread;
-use std::fs;
 use std::path::Path;
-use serde::Deserialize;
+use std::thread;
 
 #[derive(Deserialize, Clone)]
 struct NebulaConfig {
@@ -40,13 +40,11 @@ impl Default for NebulaConfig {
 
 fn load_config() -> NebulaConfig {
     match fs::read_to_string("nebula.toml") {
-        Ok(content) => {
-            match toml::from_str(&content) {
-                Ok(config) => config,
-                Err(e) => {
-                    eprintln!("Error parsing nebula.toml: {}. Using default config.", e);
-                    NebulaConfig::default()
-                }
+        Ok(content) => match toml::from_str(&content) {
+            Ok(config) => config,
+            Err(e) => {
+                eprintln!("Error parsing nebula.toml: {}. Using default config.", e);
+                NebulaConfig::default()
             }
         },
         Err(e) => {
@@ -59,7 +57,7 @@ fn load_config() -> NebulaConfig {
 fn main() -> std::io::Result<()> {
     // Load configuration
     let config = load_config();
-    
+
     // bind the tcp listener to configured address and port
     let listener_addr = format!("{}:{}", config.server.address, config.server.port);
     let listener = TcpListener::bind(&listener_addr)?;
@@ -71,7 +69,7 @@ fn main() -> std::io::Result<()> {
             Ok(stream) => {
                 // Clone config for the new thread
                 let thread_config = config.clone();
-                
+
                 // Spawn a new thread for each connection
                 thread::spawn(move || {
                     handle_connection(stream, &thread_config);
@@ -91,31 +89,45 @@ fn handle_connection(mut stream: TcpStream, config: &NebulaConfig) {
         println!("Request: {}", request);
 
         // extract the path from the request
-        let path = request.lines().next().and_then(
-            |line| line.split_whitespace().nth(1)
-        ).unwrap_or("/");
+        let path = request
+            .lines()
+            .next()
+            .and_then(|line| line.split_whitespace().nth(1))
+            .unwrap_or("/");
 
         // remove the leading slash and map to default file if empty
         let file_path = if path == "/" {
-            format!("{}/{}", config.content.public_dir, config.content.default_file)
+            format!(
+                "{}/{}",
+                config.content.public_dir, config.content.default_file
+            )
         } else {
-            format!("{}{}", config.content.public_dir, path)
+            format!("{}/{}", config.content.public_dir, sanitize_path(&path))
         };
 
         // check if file exists and serve it
         let (status_line, content, is_binary) = if Path::new(&file_path).exists() {
             let content_type = get_content_type(&file_path);
-            let is_binary = !content_type.starts_with("text/") && content_type != "application/javascript";
-            
+            let is_binary =
+                !content_type.starts_with("text/") && content_type != "application/javascript";
+
             if is_binary {
                 match fs::read(&file_path) {
                     Ok(contents) => ("HTTP/1.1 200 OK", contents, true),
-                    Err(_) => ("HTTP/1.1 500 INTERNAL SERVER ERROR", Vec::from("Error reading file"), false)
+                    Err(_) => (
+                        "HTTP/1.1 500 INTERNAL SERVER ERROR",
+                        Vec::from("Error reading file"),
+                        false,
+                    ),
                 }
             } else {
                 match fs::read_to_string(&file_path) {
                     Ok(contents) => ("HTTP/1.1 200 OK", contents.into_bytes(), false),
-                    Err(_) => ("HTTP/1.1 500 INTERNAL SERVER ERROR", Vec::from("Error reading file"), false)
+                    Err(_) => (
+                        "HTTP/1.1 500 INTERNAL SERVER ERROR",
+                        Vec::from("Error reading file"),
+                        false,
+                    ),
                 }
             }
         } else if path == "/hello" {
@@ -136,7 +148,7 @@ fn handle_connection(mut stream: TcpStream, config: &NebulaConfig) {
             eprintln!("Failed to write response headers: {}", e);
             return;
         }
-        
+
         if let Err(e) = stream.write_all(&content) {
             eprintln!("Failed to write response body: {}", e);
         }
@@ -145,11 +157,24 @@ fn handle_connection(mut stream: TcpStream, config: &NebulaConfig) {
     }
 }
 
+fn sanitize_path(path: &str) -> String {
+    let path = path.trim_start_matches('/');
+    let path_components: Vec<&str> = path.split('/').collect();
+
+    let safe_components: Vec<&str> = path_components
+        .into_iter()
+        .filter(|component| !component.is_empty() && *component != "." && *component != "..")
+        .collect();
+
+    safe_components.join("/")
+}
+
 fn get_content_type(path: &str) -> &str {
-    let extension = Path::new(path).extension()
+    let extension = Path::new(path)
+        .extension()
         .and_then(|ext| ext.to_str())
         .unwrap_or("");
-    
+
     match extension {
         "html" => "text/html",
         "css" => "text/css",

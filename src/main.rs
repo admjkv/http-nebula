@@ -90,16 +90,15 @@ fn handle_connection(mut stream: TcpStream, config: &NebulaConfig) -> Result<(),
     let mut buffer = [0; 1024];
     stream.read(&mut buffer)?;
 
-    // convert the request bytes to a string
+    // convert the request bytes to a string for logging
     let request = String::from_utf8_lossy(&buffer[..]);
     println!("Request: {}", request);
 
-    // extract the path from the request
-    let path = request
-        .lines()
-        .next()
-        .and_then(|line| line.split_whitespace().nth(1))
-        .unwrap_or("/");
+    // Use the parse_http_request function to extract method and path
+    let (method, path) = parse_http_request(&buffer)
+        .unwrap_or(("GET", "/"));
+    
+    println!("Method: {}, Path: {}", method, path);
 
     // remove the leading slash and map to default file if empty
     let file_path = if path == "/" {

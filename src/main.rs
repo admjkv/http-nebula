@@ -120,9 +120,9 @@ fn handle_connection(mut stream: TcpStream, config: &NebulaConfig) -> Result<(),
             if is_binary {
                 match fs::read(&file_path) {
                     Ok(contents) => ("HTTP/1.1 200 OK", contents, true),
-                    Err(_) => (
+                    Err(e) => (
                         "HTTP/1.1 500 INTERNAL SERVER ERROR",
-                        Vec::from("Error reading file"),
+                        Vec::from(format!("Error reading file: {}", e)),
                         false,
                     ),
                 }

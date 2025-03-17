@@ -148,7 +148,7 @@ fn handle_connection(mut stream: TcpStream, config: &NebulaConfig) -> Result<(),
 
     let content_type = get_content_type(&file_path);
     let response = format!(
-        "{}\r\nContent-Type: {}\r\nContent-Length: {}\r\n\r\n",
+        "{}\r\nContent-Type: {}\r\nContent-Length: {}\r\nServer: Nebula/0.1\r\nCache-Control: max-age=86400\r\n\r\n",
         status_line,
         content_type,
         content.len(),

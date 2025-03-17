@@ -194,9 +194,16 @@ fn get_content_type(path: &str) -> &str {
         "html" => "text/html",
         "css" => "text/css",
         "js" => "application/javascript",
+        "json" => "application/json",
         "png" => "image/png",
         "jpg" | "jpeg" => "image/jpeg",
         "gif" => "image/gif",
+        "svg" => "image/svg+xml",
+        "ico" => "image/x-icon",
+        "pdf" => "application/pdf",
+        "txt" => "text/plain",
+        "xml" => "application/xml",
+        "webp" => "image/webp",
         _ => "text/plain",
     }
 }
